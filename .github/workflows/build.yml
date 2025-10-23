@@ -36,7 +36,7 @@ jobs:
         ./test_crypto
     
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: securebox-macos
         path: build/securebox
@@ -71,7 +71,7 @@ jobs:
         ./test_crypto
     
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: securebox-linux
         path: build/securebox
