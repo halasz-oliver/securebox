@@ -2,6 +2,7 @@
 #include <fstream>
 #include <random>
 #include <map>
+#include <algorithm>
 
 namespace securebox {
 
