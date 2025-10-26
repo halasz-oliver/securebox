@@ -10,6 +10,18 @@
 
 using namespace securebox;
 
+// Global flags
+bool g_verbose = false;
+bool g_dryRun = false;
+bool g_force = false;
+
+// Verbose output helper
+void verboseLog(const std::string& message) {
+    if (g_verbose) {
+        std::cout << "[VERBOSE] " << message << "\n";
+    }
+}
+
 // Helper function to read password without echoing
 std::string readPassword(const std::string& prompt) {
     std::cout << prompt;
@@ -61,21 +73,27 @@ std::string formatTime(const std::chrono::system_clock::time_point& time) {
 void printUsage(const char* programName) {
     std::cout << "SecureBox - Encrypted File Vault\n\n";
     std::cout << "Usage:\n";
-    std::cout << "  " << programName << " init <vault_path>\n";
+    std::cout << "  " << programName << " [options] <command> [args...]\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  --verbose, -v    Enable verbose output\n";
+    std::cout << "  --dry-run        Show what would be done without doing it (remove only)\n";
+    std::cout << "  --force, -f      Skip confirmation prompts\n\n";
+    std::cout << "Commands:\n";
+    std::cout << "  init <vault_path>\n";
     std::cout << "      Initialize a new vault\n\n";
-    std::cout << "  " << programName << " add <vault_path> <file_path>\n";
+    std::cout << "  add <vault_path> <file_path>\n";
     std::cout << "      Add a file to the vault\n\n";
-    std::cout << "  " << programName << " list <vault_path>\n";
+    std::cout << "  list <vault_path>\n";
     std::cout << "      List all files in the vault\n\n";
-    std::cout << "  " << programName << " extract <vault_path> <file_id> <output_path>\n";
+    std::cout << "  extract <vault_path> <file_id> <output_path>\n";
     std::cout << "      Extract a file from the vault\n\n";
-    std::cout << "  " << programName << " remove <vault_path> <file_id>\n";
+    std::cout << "  remove <vault_path> <file_id>\n";
     std::cout << "      Remove a file from the vault\n\n";
-    std::cout << "  " << programName << " info <vault_path>\n";
+    std::cout << "  info <vault_path>\n";
     std::cout << "      Show vault information\n\n";
-    std::cout << "  " << programName << " verify <vault_path>\n";
+    std::cout << "  verify <vault_path>\n";
     std::cout << "      Verify vault integrity\n\n";
-    std::cout << "  " << programName << " change-password <vault_path>\n";
+    std::cout << "  change-password <vault_path>\n";
     std::cout << "      Change vault password\n\n";
 }
 
@@ -115,19 +133,24 @@ int cmdAdd(int argc, char* argv[]) {
     std::string vaultPath = argv[2];
     std::string filePath = argv[3];
     
+    verboseLog("Opening vault: " + vaultPath);
     std::string password = readPassword("Enter vault password: ");
     
+    verboseLog("Deriving encryption key from password...");
     auto vault = Vault::open(vaultPath, password);
     if (!vault) {
         return 1;
     }
     
+    verboseLog("Reading and encrypting file: " + filePath);
     std::string fileId = vault->addFile(filePath);
     if (fileId.empty()) {
         return 1;
     }
     
+    verboseLog("Saving vault metadata...");
     vault->close();
+    verboseLog("File successfully added to vault");
     return 0;
 }
 
@@ -178,17 +201,22 @@ int cmdExtract(int argc, char* argv[]) {
     std::string fileId = argv[3];
     std::string outputPath = argv[4];
     
+    verboseLog("Opening vault: " + vaultPath);
     std::string password = readPassword("Enter vault password: ");
     
+    verboseLog("Deriving encryption key from password...");
     auto vault = Vault::open(vaultPath, password);
     if (!vault) {
         return 1;
     }
     
+    verboseLog("Decrypting and extracting file: " + fileId);
+    verboseLog("Output path: " + outputPath);
     if (!vault->extractFile(fileId, outputPath)) {
         return 1;
     }
     
+    verboseLog("File successfully extracted");
     vault->close();
     return 0;
 }
@@ -202,6 +230,7 @@ int cmdRemove(int argc, char* argv[]) {
     std::string vaultPath = argv[2];
     std::string fileId = argv[3];
     
+    verboseLog("Opening vault: " + vaultPath);
     std::string password = readPassword("Enter vault password: ");
     
     auto vault = Vault::open(vaultPath, password);
@@ -209,19 +238,48 @@ int cmdRemove(int argc, char* argv[]) {
         return 1;
     }
     
-    std::cout << "Are you sure you want to remove this file? (yes/no): ";
-    std::string confirm;
-    std::getline(std::cin, confirm);
+    // Get file info for display
+    const auto* metadata = vault->listFiles().find(fileId) != vault->listFiles().end() 
+        ? &vault->listFiles().at(fileId) : nullptr;
     
-    if (confirm != "yes") {
-        std::cout << "Operation cancelled\n";
+    if (!metadata) {
+        std::cerr << "Error: File not found in vault\n";
+        return 1;
+    }
+    
+    // Show what will be removed
+    std::cout << "File to remove:\n";
+    std::cout << "  Name: " << metadata->originalName << "\n";
+    std::cout << "  Size: " << formatSize(metadata->originalSize) << "\n";
+    std::cout << "  ID: " << fileId.substr(0, 16) << "...\n";
+    
+    if (g_dryRun) {
+        std::cout << "\n[DRY RUN] File would be removed (not actually removed)\n";
+        vault->close();
         return 0;
     }
     
+    // Confirmation unless --force
+    if (!g_force) {
+        std::cout << "\nAre you sure you want to remove this file? (yes/no): ";
+        std::string confirm;
+        std::getline(std::cin, confirm);
+        
+        if (confirm != "yes") {
+            std::cout << "Operation cancelled\n";
+            vault->close();
+            return 0;
+        }
+    } else {
+        verboseLog("Skipping confirmation (--force enabled)");
+    }
+    
+    verboseLog("Removing file from vault...");
     if (!vault->removeFile(fileId)) {
         return 1;
     }
     
+    verboseLog("File successfully removed");
     vault->close();
     return 0;
 }
@@ -322,7 +380,39 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    std::string command = argv[1];
+    // Parse flags
+    int argOffset = 1;
+    while (argOffset < argc && argv[argOffset][0] == '-') {
+        std::string flag = argv[argOffset];
+        
+        if (flag == "--verbose" || flag == "-v") {
+            g_verbose = true;
+            verboseLog("Verbose mode enabled");
+        } else if (flag == "--dry-run") {
+            g_dryRun = true;
+            if (g_verbose) verboseLog("Dry-run mode enabled");
+        } else if (flag == "--force" || flag == "-f") {
+            g_force = true;
+            if (g_verbose) verboseLog("Force mode enabled");
+        } else {
+            std::cerr << "Error: Unknown flag '" << flag << "'\n\n";
+            printUsage(argv[0]);
+            return 1;
+        }
+        
+        argOffset++;
+    }
+    
+    if (argOffset >= argc) {
+        printUsage(argv[0]);
+        return 1;
+    }
+    
+    std::string command = argv[argOffset];
+    
+    // Adjust argc and argv for command functions
+    argc -= argOffset - 1;
+    argv += argOffset - 1;
     
     try {
         if (command == "init") {
