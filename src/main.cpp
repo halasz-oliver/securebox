@@ -244,6 +244,7 @@ int cmdRemove(int argc, char* argv[]) {
     
     if (!metadata) {
         std::cerr << "Error: File not found in vault\n";
+        vault->close();
         return 1;
     }
     
