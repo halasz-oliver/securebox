@@ -1,159 +1,144 @@
-# SecureBox – Encrypted File Vault
+# SecureBox
 
-A cross-platform encrypted file storage system with end-to-end encryption, implementing modern cryptographic standards.
+An encrypted file vault for macOS and Linux.
 
-## Features
+## What does it do?
 
-- **Strong Encryption**: ChaCha20-Poly1305 authenticated encryption
-- **Secure Key Derivation**: Argon2id password-based key derivation
-- **Cross-Platform**: Works on macOS and Linux
-- **Metadata Protection**: Encrypted file metadata storage
-- **CLI Interface**: Easy-to-use command-line interface
+SecureBox creates an encrypted container (a "vault") where you can store sensitive files. Files are encrypted using modern cryptography (ChaCha20-Poly1305) and your password is turned into an encryption key using Argon2id, which makes brute-force attacks impractical.
 
-## Security Features
+The encrypted files live in a directory on your filesystem, but they're unreadable without the vault password. Even the filenames and metadata are encrypted.
 
-- Password-based encryption using Argon2id
-- Authenticated encryption with ChaCha20-Poly1305
-- Secure random salt generation
-- Memory-safe operations
-- No plaintext data written to disk
+## Getting started
 
-## Requirements
+You'll need:
+- A C++17 compiler (GCC 7 or newer, or Clang 5+)
+- CMake 3.15 or newer
+- libsodium 1.0.18 or newer
 
-- C++17 compatible compiler (GCC 7+, Clang 5+)
-- CMake 3.15+
-- libsodium 1.0.18+
-
-## Installation
-
-### macOS
+### On macOS
 
 ```bash
-# Install dependencies
 brew install libsodium cmake
-
-# Build
 mkdir build && cd build
 cmake ..
 make
 sudo make install
 ```
 
-### Linux
+### On Linux (Ubuntu/Debian)
 
 ```bash
-# Install dependencies (Ubuntu/Debian)
 sudo apt-get install libsodium-dev cmake build-essential
-
-# Build
 mkdir build && cd build
 cmake ..
 make
 sudo make install
 ```
 
-## Usage
+## How to use it
 
-### Initialize a new vault
-
-```bash
-securebox init /path/to/vault
-```
-
-### Add a file to the vault
+### Creating a vault
 
 ```bash
-securebox add /path/to/vault /path/to/file
+securebox init ~/my-vault
 ```
 
-### List files in the vault
+You'll be prompted for a password. Pick a good one—if you lose it, your files are gone.
+
+### Adding files
 
 ```bash
-securebox list /path/to/vault
+securebox add ~/my-vault /path/to/secret-file.pdf
 ```
 
-### Extract a file from the vault
+The file gets encrypted and stored in the vault. You'll get back a file ID (a hash) that you can use to extract it later.
+
+### Viewing what's in your vault
 
 ```bash
-securebox extract /path/to/vault <file_id> /output/path
+securebox list ~/my-vault
 ```
 
-### Remove a file from the vault
+This shows all files with their original names, sizes, and when they were added.
+
+### Getting files out
 
 ```bash
-securebox remove /path/to/vault <file_id>
+securebox extract ~/my-vault <file-id> /where/to/save/it.pdf
 ```
 
-### Change vault password
+The file is decrypted and saved to the location you specify.
+
+### Removing files
 
 ```bash
-securebox change-password /path/to/vault
+securebox remove ~/my-vault <file-id>
 ```
 
-## Architecture
+This securely deletes the encrypted file from the vault (overwrites it with random data first).
 
-```
-SecureBox/
-├── include/
-│   ├── crypto.h          # Cryptographic operations
-│   ├── vault.h           # Vault management
-│   ├── metadata.h        # Metadata handling
-│   └── file_operations.h # File I/O operations
-├── src/
-│   ├── crypto.cpp
-│   ├── vault.cpp
-│   ├── metadata.cpp
-│   ├── file_operations.cpp
-│   └── main.cpp          # CLI interface
-└── tests/
-    └── test_crypto.cpp   # Unit tests
+### Other commands
+
+```bash
+# Get vault info (number of files, total size, etc)
+securebox info ~/my-vault
+
+# Verify all files are intact and uncorrupted
+securebox verify ~/my-vault
+
+# Change the vault password
+securebox change-password ~/my-vault
 ```
 
-## Cryptographic Details
+## Command-line options
 
-### Key Derivation
-- Algorithm: Argon2id
-- Memory: 64 MB
-- Iterations: 3
-- Parallelism: 1
-- Salt: 16 bytes (random)
+- `--verbose` or `-v`: Show what's happening under the hood
+- `--dry-run`: Preview what would happen without actually doing it (works with `remove`)
+- `--force` or `-f`: Skip confirmation prompts
 
-### Encryption
-- Algorithm: ChaCha20-Poly1305
-- Nonce: 24 bytes (random, XChaCha20)
-- Authentication tag: 16 bytes
+## Technical details
 
-### File Format
+If you're curious about the cryptography:
 
-```
-Vault Structure:
-├── .vault_config        # Encrypted vault configuration
-├── .vault_metadata      # Encrypted file metadata
-└── files/
-    ├── <hash1>          # Encrypted file data
-    └── <hash2>          # Encrypted file data
-```
+**Password → Key derivation**
+- Argon2id with 64 MB memory, 3 iterations
+- 16-byte random salt (stored unencrypted)
+- Produces a 32-byte key
 
-## Security Considerations
+**Encryption**
+- ChaCha20-Poly1305 (authenticated encryption)
+- 24-byte random nonce per file
+- 16-byte authentication tag
 
-- Always use strong, unique passwords
-- Store vault backups securely
-- The vault password cannot be recovered if lost
-- Encrypted files are stored with random names
-- All metadata is encrypted
+Each file gets its own random nonce, and the nonces are stored in the encrypted metadata. The original filename, path, MIME type, and timestamps are all encrypted too.
 
-## License
+## Important notes
 
-MIT License - See LICENSE file for details
+- **Your password cannot be recovered.** If you forget it, your files are permanently inaccessible. There's no backdoor or recovery mechanism.
+- Use a strong, unique password. This isn't the place for "password123".
+- The vault directory contains encrypted files with random names. Don't try to read them directly—use the extract command.
+- Back up your vault directory regularly, but keep the backups secure (they're encrypted, but still contain your sensitive data).
+
+## What's next
+
+I'm planning to add:
+- Progress indicators for large files (done!)
+- File compression before encryption
+- A simple GUI
+- Better error messages
+- File tagging and search
+- Cloud sync support (maybe)
+
+Check out TODO.md for the full roadmap.
 
 ## Contributing
 
-Contributions welcome! Please ensure all security-critical code is reviewed.
+Found a bug? Have an idea? Pull requests are welcome. This is a side project but I'm happy to review contributions.
 
-## Roadmap
+## License
 
-- [ ] GUI interface
-- [ ] Cloud sync support
-- [ ] File compression
-- [ ] Multiple user support
-- [ ] Hardware key support (YubiKey)
+MIT License—do whatever you want with it. See LICENSE for the legal text.
+
+## Questions?
+
+The code is documented, but if something's unclear, feel free to open an issue.
